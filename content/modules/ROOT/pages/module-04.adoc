@@ -1,0 +1,368 @@
+= Remediation
+
+== Fixing the Vulnerability
+
+Now that we understand the problem, we need to fix it properly. There are several approaches we could take, ranging from simply removing the sudo rule to implementing a better solution that still meets the business need.
+
+== Understanding the Requirement
+
+Before we remove Scott's rule, let's remember what he was trying to accomplish:
+
+* **Business need**: devuser needs to view certain protected log files for troubleshooting
+* **Scott's flawed approach**: Allow sudo access to `less`
+* **The problem**: `less` can spawn shells and escalate privileges
+
+[TIP]
+====
+**From Nate:**
+
+The key question in any security remediation is: "How do we meet the legitimate business need while eliminating the security risk?"
+
+Sometimes the answer is "deny the request because the risk is too high." But often there's a better way.
+====
+
+== Option 1: Complete Removal
+
+The simplest and most secure option is to completely remove the sudo rule. Let's do that first, then discuss alternatives.
+
+View the current sudoers.d configuration:
+
+[source,bash,role=execute]
+----
+sudo ls -la /etc/sudoers.d/
+----
+
+Remove the vulnerable rule:
+
+[source,bash,role=execute]
+----
+sudo rm /etc/sudoers.d/devuser-logs
+----
+
+Verify it's gone:
+
+[source,bash,role=execute]
+----
+sudo ls -la /etc/sudoers.d/
+----
+
+Now verify that devuser can no longer run commands with sudo:
+
+[source,bash,role=execute]
+----
+sudo -i -u devuser
+----
+
+[source,bash,role=execute]
+----
+sudo -l
+----
+
+[NOTE]
+====
+You should now see a message indicating that devuser is not allowed to run sudo on this host. The vulnerability is eliminated.
+====
+
+Exit back to the rhel user:
+
+[source,bash,role=execute]
+----
+exit
+----
+
+== Option 2: Better Solutions
+
+Simply removing access might not satisfy the business requirement. Here are better alternatives:
+
+=== Alternative 1: File Permissions
+
+Instead of sudo, adjust file permissions so devuser can read the logs:
+
+[source,bash]
+----
+# Create a log readers group
+sudo groupadd logreaders
+
+# Add devuser to the group
+sudo usermod -aG logreaders devuser
+
+# Make log files readable by the group
+sudo chgrp logreaders /var/log/messages
+sudo chmod g+r /var/log/messages
+
+# For directories
+sudo chmod g+rx /var/log
+----
+
+**Pros:**
+* No sudo required
+* Limited scope - only the specific files needed
+* Easy to audit and manage
+
+**Cons:**
+* Requires changing system file permissions
+* May not work for all log files (some are actively written by root-only processes)
+* User needs to log out and back in for group membership to take effect
+
+=== Alternative 2: Log Viewer Script
+
+Create a dedicated script that safely displays logs:
+
+[source,bash]
+----
+# Create a script that only allows viewing specific logs
+sudo tee /usr/local/bin/view-app-logs << 'EOF'
+#!/bin/bash
+# Safe log viewer script
+# Only allows viewing, no shell access
+
+case "$1" in
+  messages)
+    cat /var/log/messages
+    ;;
+  secure)
+    cat /var/log/secure
+    ;;
+  dnf)
+    cat /var/log/dnf.log
+    ;;
+  *)
+    echo "Usage: $0 {messages|secure|dnf}"
+    exit 1
+    ;;
+esac
+EOF
+
+sudo chmod 755 /usr/local/bin/view-app-logs
+
+# Give sudo access to the script
+sudo tee /etc/sudoers.d/devuser-logs << 'EOF'
+devuser ALL=(root) NOPASSWD: /usr/local/bin/view-app-logs
+EOF
+sudo chmod 0440 /etc/sudoers.d/devuser-logs
+----
+
+**Pros:**
+* Controlled access to specific logs only
+* Uses `cat` which cannot spawn shells
+* Clear audit trail of what was accessed
+
+**Cons:**
+* Requires maintaining a script
+* Less flexible than direct file access
+* Still uses sudo (though much safer)
+
+=== Alternative 3: Read-Only Access via ACLs
+
+Use Access Control Lists for more granular permissions:
+
+[source,bash]
+----
+# Set ACL to give devuser read access to specific log file
+sudo setfacl -m u:devuser:r /var/log/messages
+sudo setfacl -m u:devuser:r /var/log/secure
+
+# Verify
+sudo getfacl /var/log/messages
+----
+
+**Pros:**
+* Very granular control
+* No sudo required
+* No group membership needed
+
+**Cons:**
+* Requires ACL support (usually available)
+* Permissions may be reset by log rotation
+* Less commonly used, might confuse other admins
+
+== Recommended Solution
+
+For most environments, **Alternative 1** (group-based permissions) is the best balance of security and usability:
+
+[source,bash,role=execute]
+----
+sudo groupadd logreaders
+----
+
+[source,bash,role=execute]
+----
+sudo usermod -aG logreaders devuser
+----
+
+[source,bash,role=execute]
+----
+sudo chmod g+rx /var/log
+----
+
+[source,bash,role=execute]
+----
+sudo chgrp logreaders /var/log/messages
+sudo chmod g+r /var/log/messages
+----
+
+Verify the permissions:
+
+[source,bash,role=execute]
+----
+ls -la /var/log/messages
+----
+
+Test access as devuser:
+
+[source,bash,role=execute]
+----
+sudo -i -u devuser
+----
+
+[source,bash,role=execute]
+----
+less /var/log/messages
+----
+
+[NOTE]
+====
+You should now be able to read the log file without sudo! Press `q` to quit less.
+
+Notice that even though devuser is using `less`, there's no privilege escalation risk because they're running it as their own user, not as root.
+====
+
+Exit back to rhel:
+
+[source,bash,role=execute]
+----
+exit
+----
+
+== Verification and Testing
+
+Let's verify our remediation is complete:
+
+1. **Confirm no sudo access for devuser:**
+
+[source,bash,role=execute]
+----
+sudo -u devuser sudo -l 2>&1 | head -5
+----
+
+2. **Confirm log file access works:**
+
+[source,bash,role=execute]
+----
+sudo -u devuser head -5 /var/log/messages
+----
+
+3. **Confirm no privilege escalation possible:**
+
+[source,bash,role=execute]
+----
+# This should fail
+sudo -u devuser sudo whoami 2>&1
+----
+
+[IMPORTANT]
+====
+**Security Verification Checklist:**
+
+* ✓ Vulnerable sudo rule removed
+* ✓ devuser can no longer run commands as root
+* ✓ Business need still met (can read logs)
+* ✓ Privilege escalation not possible
+* ✓ Solution uses least privilege principle
+====
+
+== Documentation and Reporting
+
+In a real incident, you would now document your findings:
+
+=== Incident Report Template
+
+[source,text]
+----
+INCIDENT RESOLUTION REPORT
+==========================
+
+Incident ID: SEC-2025-001
+Date: [Current Date]
+Severity: HIGH
+Status: RESOLVED
+
+SUMMARY:
+Privilege escalation vulnerability due to misconfigured sudo rule
+allowing regular user 'devuser' to obtain root shell access.
+
+ROOT CAUSE:
+Sudo rule granted devuser NOPASSWD access to /usr/bin/less, which
+can spawn shells and execute arbitrary commands as root.
+
+EXPLOITATION METHOD:
+User could run 'sudo less [file]' then use less's built-in command
+execution features (!bash, v editor, etc.) to obtain root shell.
+
+BUSINESS IMPACT:
+- devuser had unrestricted root access for [duration]
+- Potential for data access, modification, or system compromise
+- Compliance implications for audit logs and access controls
+
+REMEDIATION:
+1. Removed vulnerable sudoers rule (/etc/sudoers.d/devuser-logs)
+2. Implemented group-based permissions for log file access
+3. Created 'logreaders' group with access to necessary log files
+4. Added devuser to logreaders group
+5. Verified no sudo access remains for devuser
+6. Confirmed business requirement still met
+
+LESSONS LEARNED:
+- Sudo rules must be reviewed by security team before implementation
+- Commands with shell execution capabilities should never be granted sudo
+- Business requirements should be met with least-privilege solutions
+- Regular sudo configuration audits should be performed
+
+RECOMMENDATIONS:
+1. Implement policy requiring security review of all sudo changes
+2. Manager-level staff should not have direct sudoers edit capability
+3. Create standard procedures for common access requests
+4. Audit all existing sudoers rules for similar vulnerabilities
+5. Implement sudo activity monitoring and alerting
+
+NEXT STEPS:
+1. Review all sudo rules on all systems for similar issues
+2. Update change management procedures
+3. Provide security training for managers
+4. Implement automated sudo rule validation
+----
+
+== Final Thoughts
+
+[quote, Sysadmin Nate]
+____
+"Good work on this investigation. Quick, thorough, and you fixed it the right way instead of just slapping a band-aid on it. This is exactly the kind of incident response we need.
+
+I'll have a talk with Scott about checking with us before making security-related changes. He means well, but security is complex, and a little knowledge can be dangerous.
+
+Also, might want to add this to your knowledge base: GTFOBins (gtfobins.github.io) is a great resource for understanding what commands can be exploited for privilege escalation. Worth reviewing before granting any sudo access."
+____
+
+[IMPORTANT]
+====
+**Key Takeaways:**
+
+1. **Understand command capabilities** - A command's primary purpose doesn't define its full capabilities
+2. **Use least privilege** - Grant minimum access needed, not maximum access that seems safe
+3. **Review before granting** - All sudo rules should be security-reviewed
+4. **Meet business needs securely** - There's usually a safer way to accomplish the goal
+5. **Document everything** - Good documentation prevents repeat incidents
+====
+
+== Congratulations!
+
+You've successfully:
+
+* ✓ Investigated a security alert
+* ✓ Identified a privilege escalation vulnerability
+* ✓ Understood the exploitation method
+* ✓ Implemented proper remediation
+* ✓ Met the business requirement securely
+* ✓ Documented the incident
+
+This type of investigation and remediation is a critical skill for systems administrators and security professionals. Well done!

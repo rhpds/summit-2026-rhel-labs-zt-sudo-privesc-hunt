@@ -1,0 +1,155 @@
+= Finding the Misconfiguration
+
+== Investigating Sudo Configuration
+
+Now that we understand the situation, let's investigate the sudo configuration to find exactly what Manager Scott created.
+
+=== Understanding Sudo
+
+The `sudo` command allows permitted users to run commands as the superuser (or another user). The configuration is controlled by:
+
+* `/etc/sudoers` - The main configuration file
+* `/etc/sudoers.d/` - Directory for modular sudo rules (recommended for custom rules)
+
+[TIP]
+====
+**Best Practice:**
+
+Adding custom sudo rules to `/etc/sudoers.d/` is preferred over editing `/etc/sudoers` directly because:
+
+* It keeps custom rules separate from system defaults
+* It's easier to manage and review individual rule files
+* It reduces the risk of syntax errors breaking the entire sudoers configuration
+====
+
+=== Checking What devuser Can Run
+
+Let's start by checking what sudo privileges devuser has. We can do this using the `sudo -l` command, but we need to switch to the devuser account first.
+
+First, let's see if we can switch to devuser:
+
+[source,bash,role=execute]
+----
+sudo -i -u devuser
+----
+
+Now check what this user can run with sudo:
+
+[source,bash,role=execute]
+----
+sudo -l
+----
+
+[NOTE]
+====
+The `sudo -l` command lists the commands a user is allowed (and forbidden) to run with sudo. This is extremely useful for security audits.
+
+You should see output showing that devuser can run `/usr/bin/less` as root without a password.
+====
+
+Let's exit back to the rhel user:
+
+[source,bash,role=execute]
+----
+exit
+----
+
+=== Finding Scott's Sudo Rule
+
+Scott mentioned in his email that he created a rule in `/etc/sudoers.d/`. Let's look there:
+
+[source,bash,role=execute]
+----
+sudo ls -la /etc/sudoers.d/
+----
+
+You should see a file related to devuser. Let's examine it:
+
+[source,bash,role=execute]
+----
+sudo cat /etc/sudoers.d/devuser-logs
+----
+
+[IMPORTANT]
+====
+**The Vulnerable Configuration:**
+
+```
+devuser ALL=(root) NOPASSWD: /usr/bin/less
+```
+
+Let's break this down:
+
+* `devuser` - The user this rule applies to
+* `ALL` - Can run from any host
+* `(root)` - Can run commands as the root user
+* `NOPASSWD:` - No password required
+* `/usr/bin/less` - The specific command allowed
+
+**What Scott intended:** Let devuser view protected log files
+
+**What this actually allows:** Full root shell access!
+====
+
+== Understanding the Vulnerability
+
+The problem is that `less` is not just a simple file viewer. It's an interactive pager with many features, including the ability to execute shell commands.
+
+=== Why This Is Dangerous
+
+When you run a command with `sudo`, that command runs with root privileges. If that command can spawn a shell or execute other commands, those will ALSO run with root privileges.
+
+The `less` command has several ways to execute commands:
+
+* Press `!` followed by a command to execute it
+* Press `v` to open the current file in an editor (which can also spawn shells)
+* Use various other interactive features
+
+[quote, Sysadmin Nate]
+____
+"This is a classic mistake. People think 'it's just a viewer, what harm could it do?' But many Unix tools are more powerful than they appear. GTFOBins (https://gtfobins.github.io/) maintains a database of Unix binaries that can be exploited for privilege escalation, and `less` is definitely on that list."
+____
+
+== Common Vulnerable Commands
+
+Other common commands that can be exploited similarly:
+
+* **Editors**: `vim`, `vi`, `nano`, `emacs` - Can all execute shells
+* **Pagers**: `more`, `less` - Can execute commands
+* **File operations**: `find`, `tar`, `zip` - Can execute commands via various flags
+* **System tools**: `awk`, `sed`, `perl`, `python` - Are programming languages!
+* **Others**: `man`, `git`, `ftp`, and many more
+
+[IMPORTANT]
+====
+**Security Principle:**
+
+When granting sudo access, you must understand the FULL capabilities of the command, not just its primary purpose. If a command can execute other commands or spawn a shell, it can be used for privilege escalation.
+====
+
+== Verification
+
+Let's verify this is indeed the rule causing the problem. Check the file permissions and ownership:
+
+[source,bash,role=execute]
+----
+sudo ls -l /etc/sudoers.d/devuser-logs
+----
+
+The permissions should be `0440` (read-only for root and the sudo group), which is correct for sudoers files.
+
+Now let's move on to the next module where we'll actually test this vulnerability in a controlled way to understand exactly how it works.
+
+[NOTE]
+====
+**Why We're Testing:**
+
+You might wonder why we need to test this if we already know it's vulnerable. In real security investigations, you need to:
+
+1. Confirm the vulnerability actually works
+2. Understand the exact attack vector
+3. Document the exploitation method for your report
+4. Verify your remediation actually fixes the issue
+
+This is standard practice in security incident response.
+====

