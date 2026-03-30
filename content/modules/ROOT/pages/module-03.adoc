@@ -199,9 +199,17 @@ Commands that seem "safe" can often:
 * Call other programs with their elevated privileges
 ====
 
-[quote, Manager Scott's lesson learned (hopefully)]
+[quote, Manager Scott <scott@super-business.local>]
 ____
-"I thought I was being clever by giving them just 'enough' access to do their job. I didn't realize that `less` could do so much more than just view files. I should have consulted with the security team before creating sudo rules."
+*RE: About that devuser access*
+
+Look, I get that there was technically a way someone could exploit what I set up, but let's be real here - devuser is a trusted developer. They weren't actually TRYING to get root access, they just needed to read logs.
+
+Maybe less wasn't the perfect choice, but the real issue is that we need better tools for this kind of thing. I was trying to solve a business problem with the tools available.
+
+Going forward I guess I'll loop you in on these things, but honestly the whole sudo system seems overly complicated if you ask me.
+
+Scott
 ____
 
 Now let's move on to properly fixing this misconfiguration in the next module.

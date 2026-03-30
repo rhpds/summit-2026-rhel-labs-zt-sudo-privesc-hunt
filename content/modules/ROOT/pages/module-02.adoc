@@ -107,7 +107,13 @@ The `less` command has several ways to execute commands:
 
 [quote, Sysadmin Nate]
 ____
-"This is a classic mistake. People think 'it's just a viewer, what harm could it do?' But many Unix tools are more powerful than they appear. GTFOBins (https://gtfobins.github.io/) maintains a database of Unix binaries that can be exploited for privilege escalation, and `less` is definitely on that list."
+Yep, classic mistake. I've seen this pattern before.
+
+Scott gave someone sudo to `find` once because "they just need to search for files." Didn't realize find has `-exec` that can run any command as root. That was a fun afternoon.
+
+The problem is that a lot of Unix tools do way more than their name suggests. Viewers can edit. Editors can run shells. Search tools can execute commands. If you give someone sudo to ANY of these, you're basically giving them root access with extra steps.
+
+There's actually a whole catalog of binaries that can be exploited like this - GTFOBins or something like that. Worth looking at before you approve any sudo request.
 ____
 
 == Common Vulnerable Commands

@@ -1,0 +1,106 @@
+= The Security Alert
+
+== Welcome to Super-Business
+
+Welcome to your role as a systems administrator at Super-Business, where all work is... well, super-businessey. Today you're about to investigate a serious security concern that just landed in your inbox.
+
+== The Situation
+
+You arrive at your desk to find an urgent alert from the Information Security team. Their SIEM (Security Information and Event Management) system has detected suspicious privilege escalation activity on one of your servers.
+
+Let's take a look at what InfoSec sent over.
+
+[source,bash,role=execute]
+----
+cat ~/infosec_alert.txt
+----
+
+[IMPORTANT]
+====
+This is a **HIGH priority** security investigation. The InfoSec team has detected that a regular user account (`devuser`) has been obtaining root-level access through some kind of misconfiguration - not through account compromise.
+
+This means there's a legitimate system vulnerability that needs to be found and fixed immediately.
+====
+
+== Additional Context
+
+You also have a couple of other files that might be relevant. Let's check what else is waiting for you:
+
+[source,bash,role=execute]
+----
+ls -la ~/*.txt
+----
+
+There's an email from Manager Scott and a note from your colleague, Sysadmin Nate. Let's read both:
+
+[source,bash,role=execute]
+----
+cat ~/email_from_scott.txt
+----
+
+[source,bash,role=execute]
+----
+cat ~/note_from_nate.txt
+----
+
+== Understanding the Problem
+
+Let's review what we know:
+
+* **Manager Scott** tried to be "helpful" by giving `devuser` sudo access to view log files
+* **Scott's logic**: Let devuser run `less` with sudo so they can read protected logs but not modify anything
+* **The reality**: InfoSec detected that devuser has been obtaining full root shell access
+* **The evidence**: Suspicious activity log shows devuser running commands as root and creating/modifying files
+
+[quote, Manager Scott (from his email)]
+____
+"I added a sudoers rule so devuser can use 'less' to view any log files they need. Pretty clever, right? This way they can read the logs but can't actually modify anything or mess with the system. Security win!"
+____
+
+[TIP]
+====
+**From Nate:**
+
+Scott's heart was in the right place, but sudo rules can be dangerous if you don't understand the full capabilities of the commands you're allowing.
+
+Some programs can do much more than they appear to do at first glance. Just because a tool's primary purpose is "viewing files" doesn't mean that's ALL it can do.
+====
+
+== The Evidence
+
+InfoSec also provided a summary of the suspicious activity they detected. Let's examine it:
+
+[source,bash,role=execute]
+----
+cat ~/suspicious_activity_log.txt
+----
+
+Notice the pattern:
+1. devuser runs `/usr/bin/less` with sudo (seems innocent)
+2. Shortly after, a ROOT SHELL is detected
+3. Root-level file operations occur
+
+This confirms that devuser is somehow using the `less` command that Scott allowed to escalate to a full root shell.
+
+== Your Mission
+
+Your task is to:
+
+1. **Investigate** - Find the exact sudo misconfiguration
+2. **Understand** - Learn how the privilege escalation works
+3. **Test** - Verify the vulnerability (safely)
+4. **Remediate** - Fix the misconfiguration properly
+
+Let's start the investigation in the next module.
+
+[NOTE]
+====
+In a real incident, you would also want to:
+
+* Check if devuser's account has been compromised
+* Review all actions devuser took while they had root access
+* Determine if devuser exploited this intentionally or accidentally
+* Consider whether to involve HR or legal
+
+For this lab, we're focused on the technical investigation and remediation.
+====
