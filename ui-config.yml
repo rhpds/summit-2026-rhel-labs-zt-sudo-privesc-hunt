@@ -9,13 +9,13 @@ antora:
       solveButton: false
     - name: module-02
       label: "Finding the Misconfiguration"
-      solveButton: true
+      solveButton: false
     - name: module-03
       label: "Testing the Vulnerability"
-      solveButton: true
+      solveButton: false
     - name: module-04
       label: "Remediation"
-      solveButton: true
+      solveButton: false
 
 tabs:
   - name: ">_ terminal"
