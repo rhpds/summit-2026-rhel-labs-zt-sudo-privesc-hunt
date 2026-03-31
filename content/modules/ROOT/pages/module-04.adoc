@@ -57,6 +57,11 @@ sudo -i -u devuser
 ----
 sudo -l
 ----
+[NOTE]
+====
+If you are prompted for devuser's password, enter `SecurePass123!`
+====
+
 
 [NOTE]
 ====
@@ -76,23 +81,7 @@ Simply removing access might not satisfy the business requirement. Here are bett
 
 === Alternative 1: File Permissions
 
-Instead of sudo, adjust file permissions so devuser can read the logs:
-
-[source,bash]
-----
-# Create a log readers group
-sudo groupadd logreaders
-
-# Add devuser to the group
-sudo usermod -aG logreaders devuser
-
-# Make log files readable by the group
-sudo chgrp logreaders /var/log/messages
-sudo chmod g+r /var/log/messages
-
-# For directories
-sudo chmod g+rx /var/log
-----
+Instead of sudo, adjust file permissions so devuser can read the logs
 
 **Pros:**
 * No sudo required
@@ -106,41 +95,7 @@ sudo chmod g+rx /var/log
 
 === Alternative 2: Log Viewer Script
 
-Create a dedicated script that safely displays logs:
-
-[source,bash]
-----
-# Create a script that only allows viewing specific logs
-sudo tee /usr/local/bin/view-app-logs << 'EOF'
-#!/bin/bash
-# Safe log viewer script
-# Only allows viewing, no shell access
-
-case "$1" in
-  messages)
-    cat /var/log/messages
-    ;;
-  secure)
-    cat /var/log/secure
-    ;;
-  dnf)
-    cat /var/log/dnf.log
-    ;;
-  *)
-    echo "Usage: $0 {messages|secure|dnf}"
-    exit 1
-    ;;
-esac
-EOF
-
-sudo chmod 755 /usr/local/bin/view-app-logs
-
-# Give sudo access to the script
-sudo tee /etc/sudoers.d/devuser-logs << 'EOF'
-devuser ALL=(root) NOPASSWD: /usr/local/bin/view-app-logs
-EOF
-sudo chmod 0440 /etc/sudoers.d/devuser-logs
-----
+You could write a script which can read the important logs, and the user can then run the script via sudo.  A well written script could avoid the escape scenario that `less` presented.
 
 **Pros:**
 * Controlled access to specific logs only
@@ -154,17 +109,7 @@ sudo chmod 0440 /etc/sudoers.d/devuser-logs
 
 === Alternative 3: Read-Only Access via ACLs
 
-Use Access Control Lists for more granular permissions:
-
-[source,bash]
-----
-# Set ACL to give devuser read access to specific log file
-sudo setfacl -m u:devuser:r /var/log/messages
-sudo setfacl -m u:devuser:r /var/log/secure
-
-# Verify
-sudo getfacl /var/log/messages
-----
+Similar to the first option, you could use file system ACL's to allow the user read access to the logs that they need. 
 
 **Pros:**
 * Very granular control
@@ -192,7 +137,7 @@ sudo usermod -aG logreaders devuser
 
 [source,bash,role=execute]
 ----
-sudo chmod g+rx /var/log
+sudo chmod -R g+rx /var/log
 ----
 
 [source,bash,role=execute]
@@ -244,6 +189,10 @@ Let's verify our remediation is complete:
 ----
 sudo -u devuser sudo -l 2>&1 | head -5
 ----
+[NOTE]
+====
+If you are prompted for devuser's password, enter `SecurePass123!`
+====
 
 2. **Confirm log file access works:**
 
@@ -259,6 +208,11 @@ sudo -u devuser head -5 /var/log/messages
 # This should fail
 sudo -u devuser sudo whoami 2>&1
 ----
+
+[NOTE]
+====
+If you are prompted for devuser's password, enter `SecurePass123!`
+====
 
 [IMPORTANT]
 ====
