@@ -5,13 +5,13 @@ echo "Validating module called module-02" >> /tmp/progress.log
 if [ -f /etc/sudoers.d/devuser-logs ]; then
     # Verify it contains the vulnerable rule
     if grep -q "/usr/bin/less" /etc/sudoers.d/devuser-logs; then
-        echo "PASS: Found vulnerable sudo configuration"
+        echo "PASS: Found vulnerable sudo configuration" >> /tmp/progress.log
         exit 0
     else
-        echo "FAIL: Sudoers file exists but doesn't contain expected rule"
+        echo "FAIL: Sudoers file exists but doesn't contain expected rule" >> /tmp/progress.log
         exit 1
     fi
 else
-    echo "FAIL: Sudoers file not found (it should exist at this point)"
+    echo "FAIL: Sudoers file not found (it should exist at this point)" >> /tmp/progress.log
     exit 1
 fi
